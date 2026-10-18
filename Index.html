@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Device GPS Tracker</title>
+    <title>One-Tap GPS Sender</title>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -112,16 +112,21 @@
         button:hover {
             opacity: 0.9;
         }
+
+        button:disabled {
+            background-color: var(--text-muted);
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>GPS Tracker</h1>
-        <p class="subtitle">Multi-Device Fleet Sync</p>
+        <h1>GPS Sender</h1>
+        <p class="subtitle">Single-Tap Cloud Sync</p>
 
         <div id="deviceTag" class="device-info">Device ID: Loading...</div>
-        <div id="statusBadge" class="status-badge">Status: Disconnected</div>
+        <div id="statusBadge" class="status-badge">Status: Ready</div>
 
         <div class="data-card">
             <div class="data-label">Latitude</div>
@@ -134,14 +139,14 @@
         </div>
 
         <div class="data-card">
-            <div class="data-label">Last Synced</div>
+            <div class="data-label">Last Sent</div>
             <div id="timeVal" class="data-value">--:--:--</div>
         </div>
 
-        <button id="toggleBtn">Start Tracking</button>
+        <button id="sendBtn">Send My Location</button>
     </div>
 
-    <!-- Firebase SDK & Multi-Device App Logic -->
+    <!-- Firebase SDK & Single-Tap Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
@@ -157,90 +162,80 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        const toggleBtn = document.getElementById('toggleBtn');
+        const sendBtn = document.getElementById('sendBtn');
         const statusBadge = document.getElementById('statusBadge');
         const latVal = document.getElementById('latVal');
         const lonVal = document.getElementById('lonVal');
         const timeVal = document.getElementById('timeVal');
         const deviceTag = document.getElementById('deviceTag');
 
-        // --- MULTI-DEVICE UNIQUE ID GENERATOR ---
+        // --- UNIQUE DEVICE ID ---
         let deviceId = localStorage.getItem('gps_tracker_device_id');
         if (!deviceId) {
-            // Generate a random unique ID for this phone
             deviceId = 'phone_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36).slice(-4);
             localStorage.setItem('gps_tracker_device_id', deviceId);
         }
         deviceTag.textContent = "Device ID: " + deviceId;
 
-        let tracking = false;
-        let watchId = null;
-
-        toggleBtn.addEventListener('click', () => {
-            tracking = !tracking;
-
-            if (tracking) {
-                if (!navigator.geolocation) {
-                    alert("Geolocation is not supported by this device.");
-                    tracking = false;
-                    return;
-                }
-
-                statusBadge.textContent = "Status: Acquiring GPS...";
-                toggleBtn.textContent = "Stop Tracking";
-
-                watchId = navigator.geolocation.watchPosition(
-                    (position) => {
-                        const lat = position.coords.latitude;
-                        const lon = position.coords.longitude;
-                        const timeString = new Date().toLocaleTimeString();
-
-                        latVal.textContent = lat.toFixed(6);
-                        lonVal.textContent = lon.toFixed(6);
-                        timeVal.textContent = timeString;
-
-                        // Dynamically push to this specific device's unique database node
-                        const deviceRef = ref(db, 'devices/' + deviceId);
-                        set(deviceRef, {
-                            deviceId: deviceId,
-                            latitude: lat,
-                            longitude: lon,
-                            timestamp: Date.now()
-                        })
-                        .then(() => {
-                            statusBadge.textContent = "Status: Live & Synced";
-                            statusBadge.classList.add('active');
-                        })
-                        .catch((error) => {
-                            console.error("Firebase error:", error);
-                            statusBadge.textContent = "Status: Firebase Error";
-                        });
-
-                    },
-                    (error) => {
-                        console.error(error);
-                        statusBadge.textContent = "Status: GPS Permission Denied";
-                        statusBadge.classList.remove('active');
-                        tracking = false;
-                        toggleBtn.textContent = "Start Tracking";
-                    },
-                    {
-                        enableHighAccuracy: true,
-                        maximumAge: 5000,
-                        timeout: 5000
-                    }
-                );
-
-            } else {
-                if (watchId !== null) {
-                    navigator.geolocation.clearWatch(watchId);
-                    watchId = null;
-                }
-
-                statusBadge.textContent = "Status: Disconnected";
-                statusBadge.classList.remove('active');
-                toggleBtn.textContent = "Start Tracking";
+        // --- SINGLE-TAP LOCATION PUSH ---
+        sendBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                alert("Geolocation is not supported by this device.");
+                return;
             }
+
+            statusBadge.textContent = "Status: Acquiring GPS...";
+            statusBadge.classList.remove('active');
+            sendBtn.disabled = true;
+            sendBtn.textContent = "Sending...";
+
+            // Fetch a single GPS fix using getCurrentPosition
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    const timeString = new Date().toLocaleTimeString();
+
+                    // Update UI
+                    latVal.textContent = lat.toFixed(6);
+                    lonVal.textContent = lon.toFixed(6);
+                    timeVal.textContent = timeString;
+
+                    // Push to Firebase under this device's node
+                    const deviceRef = ref(db, 'devices/' + deviceId);
+                    set(deviceRef, {
+                        deviceId: deviceId,
+                        latitude: lat,
+                        longitude: lon,
+                        timestamp: Date.now()
+                    })
+                    .then(() => {
+                        statusBadge.textContent = "Status: Successfully Sent!";
+                        statusBadge.classList.add('active');
+                        sendBtn.disabled = false;
+                        sendBtn.textContent = "Send My Location";
+                    })
+                    .catch((error) => {
+                        console.error("Firebase error:", error);
+                        statusBadge.textContent = "Status: Firebase Error";
+                        sendBtn.disabled = false;
+                        sendBtn.textContent = "Send My Location";
+                    });
+
+                },
+                (error) => {
+                    console.error(error);
+                    statusBadge.textContent = "Status: GPS Permission Denied / Error";
+                    statusBadge.classList.remove('active');
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = "Send My Location";
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
         });
     </script>
 </body>
