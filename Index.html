@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS to ESP32 Tracker</title>
+    <title>Multi-Device GPS Tracker</title>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -44,7 +44,18 @@
         p.subtitle {
             color: var(--text-muted);
             font-size: 0.9rem;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
+        }
+
+        .device-info {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 0.8rem;
+            color: var(--accent);
+            margin-bottom: 20px;
+            word-break: break-all;
         }
 
         .data-card {
@@ -107,8 +118,9 @@
 
     <div class="container">
         <h1>GPS Tracker</h1>
-        <p class="subtitle">Syncing to ESP32 via Firebase</p>
+        <p class="subtitle">Multi-Device Fleet Sync</p>
 
+        <div id="deviceTag" class="device-info">Device ID: Loading...</div>
         <div id="statusBadge" class="status-badge">Status: Disconnected</div>
 
         <div class="data-card">
@@ -129,12 +141,12 @@
         <button id="toggleBtn">Start Tracking</button>
     </div>
 
-    <!-- Firebase SDK & App Logic -->
+    <!-- Firebase SDK & Multi-Device App Logic -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-        // Firebase Configuration (from your friend's project)
+        // Firebase Configuration
         const firebaseConfig = {
             apiKey: "AIzaSyBeJ-ltQnHF-6uUaFbA5VzeiSsTMkTvMt4",
             databaseURL: "https://database-1-1b5f8-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -142,7 +154,6 @@
             appId: "1:664707238336:web:a199d6c63ba172793f2025"
         };
 
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
@@ -151,6 +162,16 @@
         const latVal = document.getElementById('latVal');
         const lonVal = document.getElementById('lonVal');
         const timeVal = document.getElementById('timeVal');
+        const deviceTag = document.getElementById('deviceTag');
+
+        // --- MULTI-DEVICE UNIQUE ID GENERATOR ---
+        let deviceId = localStorage.getItem('gps_tracker_device_id');
+        if (!deviceId) {
+            // Generate a random unique ID for this phone
+            deviceId = 'phone_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36).slice(-4);
+            localStorage.setItem('gps_tracker_device_id', deviceId);
+        }
+        deviceTag.textContent = "Device ID: " + deviceId;
 
         let tracking = false;
         let watchId = null;
@@ -168,27 +189,26 @@
                 statusBadge.textContent = "Status: Acquiring GPS...";
                 toggleBtn.textContent = "Stop Tracking";
 
-                // Continuously watch phone's GPS position
                 watchId = navigator.geolocation.watchPosition(
                     (position) => {
                         const lat = position.coords.latitude;
                         const lon = position.coords.longitude;
                         const timeString = new Date().toLocaleTimeString();
 
-                        // Update local screen UI
                         latVal.textContent = lat.toFixed(6);
                         lonVal.textContent = lon.toFixed(6);
                         timeVal.textContent = timeString;
 
-                        // Push coordinates to Firebase database path: devices/my_phone_01
-                        const deviceRef = ref(db, 'devices/my_phone_01');
+                        // Dynamically push to this specific device's unique database node
+                        const deviceRef = ref(db, 'devices/' + deviceId);
                         set(deviceRef, {
+                            deviceId: deviceId,
                             latitude: lat,
                             longitude: lon,
                             timestamp: Date.now()
                         })
                         .then(() => {
-                            statusBadge.textContent = "Status: Synced to Cloud";
+                            statusBadge.textContent = "Status: Live & Synced";
                             statusBadge.classList.add('active');
                         })
                         .catch((error) => {
@@ -212,7 +232,6 @@
                 );
 
             } else {
-                // Stop tracking
                 if (watchId !== null) {
                     navigator.geolocation.clearWatch(watchId);
                     watchId = null;
