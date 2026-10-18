@@ -200,13 +200,13 @@
                         timeVal.textContent = timeString;
 
                         // Dynamically push to this specific device's unique database node
-                        const deviceRef = ref(db, 'devices/' + deviceId);
-                        set(deviceRef, {
-                            deviceId: deviceId,
-                            latitude: lat,
-                            longitude: lon,
-                            timestamp: Date.now()
-                        })
+                        const deviceRef = ref(db, 'devices/my_phone_01');
+
+set(deviceRef, {
+    latitude: lat,
+    longitude: lon,
+    timestamp: Date.now()
+})
                         .then(() => {
                             statusBadge.textContent = "Status: Live & Synced";
                             statusBadge.classList.add('active');
