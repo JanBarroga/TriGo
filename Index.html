@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS to ESP32 Tracker</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+            color: var(--accent);
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin-bottom: 25px;
+        }
+
+        .data-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: left;
+        }
+
+        .data-label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .data-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            background-color: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            margin-bottom: 20px;
+        }
+
+        .status-badge.active {
+            background-color: rgba(34, 197, 94, 0.2);
+            color: #86efac;
+        }
+
+        button {
+            background-color: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>GPS Tracker</h1>
+        <p class="subtitle">Syncing to ESP32 via Firebase</p>
+
+        <div id="statusBadge" class="status-badge">Status: Disconnected</div>
+
+        <div class="data-card">
+            <div class="data-label">Latitude</div>
+            <div id="latVal" class="data-value">0.000000</div>
+        </div>
+
+        <div class="data-card">
+            <div class="data-label">Longitude</div>
+            <div id="lonVal" class="data-value">0.000000</div>
+        </div>
+
+        <div class="data-card">
+            <div class="data-label">Last Synced</div>
+            <div id="timeVal" class="data-value">--:--:--</div>
+        </div>
+
+        <button id="toggleBtn">Start Tracking</button>
+    </div>
+
+    <!-- Firebase SDK & App Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        // Firebase Configuration (from your friend's project)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBeJ-ltQnHF-6uUaFbA5VzeiSsTMkTvMt4",
+            databaseURL: "https://database-1-1b5f8-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "database-1-1b5f8",
+            appId: "1:664707238336:web:a199d6c63ba172793f2025"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        const toggleBtn = document.getElementById('toggleBtn');
+        const statusBadge = document.getElementById('statusBadge');
+        const latVal = document.getElementById('latVal');
+        const lonVal = document.getElementById('lonVal');
+        const timeVal = document.getElementById('timeVal');
+
+        let tracking = false;
+        let watchId = null;
+
+        toggleBtn.addEventListener('click', () => {
+            tracking = !tracking;
+
+            if (tracking) {
+                if (!navigator.geolocation) {
+                    alert("Geolocation is not supported by this device.");
+                    tracking = false;
+                    return;
+                }
+
+                statusBadge.textContent = "Status: Acquiring GPS...";
+                toggleBtn.textContent = "Stop Tracking";
+
+                // Continuously watch phone's GPS position
+                watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        const timeString = new Date().toLocaleTimeString();
+
+                        // Update local screen UI
+                        latVal.textContent = lat.toFixed(6);
+                        lonVal.textContent = lon.toFixed(6);
+                        timeVal.textContent = timeString;
+
+                        // Push coordinates to Firebase database path: devices/my_phone_01
+                        const deviceRef = ref(db, 'devices/my_phone_01');
+                        set(deviceRef, {
+                            latitude: lat,
+                            longitude: lon,
+                            timestamp: Date.now()
+                        })
+                        .then(() => {
+                            statusBadge.textContent = "Status: Synced to Cloud";
+                            statusBadge.classList.add('active');
+                        })
+                        .catch((error) => {
+                            console.error("Firebase error:", error);
+                            statusBadge.textContent = "Status: Firebase Error";
+                        });
+
+                    },
+                    (error) => {
+                        console.error(error);
+                        statusBadge.textContent = "Status: GPS Permission Denied";
+                        statusBadge.classList.remove('active');
+                        tracking = false;
+                        toggleBtn.textContent = "Start Tracking";
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 5000,
+                        timeout: 5000
+                    }
+                );
+
+            } else {
+                // Stop tracking
+                if (watchId !== null) {
+                    navigator.geolocation.clearWatch(watchId);
+                    watchId = null;
+                }
+
+                statusBadge.textContent = "Status: Disconnected";
+                statusBadge.classList.remove('active');
+                toggleBtn.textContent = "Start Tracking";
+            }
+        });
+    </script>
+</body>
+</html>
